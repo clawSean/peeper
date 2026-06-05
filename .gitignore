@@ -1,0 +1,5 @@
+.edgewallet-seen.json
+.*-seen.json
+.*-cache.json
+*.log
+node_modules/

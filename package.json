@@ -1,0 +1,15 @@
+{
+  "name": "edgewallet-free-poller",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Tiny no-credit poller for public @edgewallet posts via X syndication timeline.",
+  "bin": {
+    "edgewallet-poll": "./poll-edgewallet.mjs"
+  },
+  "scripts": {
+    "poll": "node poll-edgewallet.mjs --limit 5",
+    "watch": "node poll-edgewallet.mjs --watch --interval 61",
+    "smoke": "tmp_cache=\"$(mktemp)\"; node poll-edgewallet.mjs --limit 1 --json --cache \"$tmp_cache\" | node -e \"let s=''; process.stdin.on('data', d => s += d); process.stdin.on('end', () => { const j = JSON.parse(s); if (j.authUsed || j.xApiUsed || j.xAiUsed) throw new Error('paid/auth path used'); if (!j.tweets[0]?.id) throw new Error('missing tweet'); console.log('PASS', j.tweets[0].id); })\"; rm -f \"$tmp_cache\""
+  }
+}
