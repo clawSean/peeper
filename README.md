@@ -2,6 +2,12 @@
 
 Tiny dependency-free watcher for public X posts. Defaults to `@edgewallet`.
 
+Peeper is also bundled into the broader
+[X/Twitter Kit](https://github.com/clawSean/openclaw-x-twitter-kit), which adds
+OpenClaw skill routing, xAI/Grok `x_search`, `xurl` OAuth setup, diagnostics,
+and safety docs. Use this standalone repo when you only want the tiny no-credit
+watcher; use the full kit when you want the whole X/Twitter access stack.
+
 Peeper's default source is FxTwitter's public profile statuses endpoint:
 
 ```text

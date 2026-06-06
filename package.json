@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "Tiny no-credit watcher for public X posts.",
+  "description": "Tiny no-credit watcher for public X posts; also bundled in the X/Twitter Kit.",
   "bin": {
     "peeper": "./peeper.mjs"
   },
