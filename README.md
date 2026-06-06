@@ -109,18 +109,10 @@ Run the local like config doctor:
 npm run like:doctor
 ```
 
-Run through the local 121-second scheduler:
-
-```bash
-npm run edge:scheduled
-```
-
-Standard cron has minute-level granularity, so the scheduler lives inside Peeper. Cron wakes it once per minute; the Peeper scheduler uses `state/edgewallet-schedule.json` and `state/edgewallet-schedule.lock` to run the real poll only when the 121-second due time arrives.
-
 Example cron:
 
 ```cron
-* * * * * cd /path/to/peeper && /usr/bin/node scripts/run-edge-scheduled.mjs >> /path/to/peeper/logs/edgewallet-auto-like.log 2>&1
+*/2 * * * * cd /path/to/peeper && /usr/bin/npm run edge:once >> /path/to/peeper/logs/edgewallet-auto-like.log 2>&1
 ```
 
 Live mode requires `.env` to contain:

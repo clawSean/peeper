@@ -98,3 +98,22 @@
 
 ### Next
 - DONE. Confirm cron logs show Peeper scheduler runs and old active project path is gone.
+
+## Iteration 6 - 2026-06-06T05:50Z
+
+### Slice
+- Removed the 121-second scheduler wrapper after deciding the extra layer was not worth the complexity.
+- Returned live cron to a simple every-2-minutes `npm run edge:once` command.
+- Kept all real logic isolated in Peeper: no-credit polling, state/cache, and authenticated Like hook.
+
+### Verification
+- Command/check: `npm run edge:once`
+- Result: pass
+- Evidence: Ran the no-credit Edge poll and reported latest `2062859660030361659` with no new tweets.
+
+### Learnings
+- The scheduler wrapper worked, but it made the teammate-shareable setup less obvious.
+- For this project, boring cron plus Peeper-owned logic is the better tradeoff.
+
+### Next
+- DONE. Keep cron simple unless a real rate-limit/ops need appears.

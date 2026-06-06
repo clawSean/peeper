@@ -12,7 +12,6 @@
     "watch": "node peeper.mjs --watch --interval 61",
     "edge:once": "mkdir -p state logs && node peeper.mjs --source fx --handle EdgeWallet --once --state state/edgewallet-seen.json --cache state/edgewallet-cache.json --on-new 'node scripts/like-with-xurl.mjs {id}'",
     "edge:watch": "mkdir -p state logs && node peeper.mjs --source fx --handle EdgeWallet --watch --interval 61 --state state/edgewallet-seen.json --cache state/edgewallet-cache.json --on-new 'node scripts/like-with-xurl.mjs {id}'",
-    "edge:scheduled": "mkdir -p state logs && node scripts/run-edge-scheduled.mjs",
     "like:doctor": "node scripts/like-with-xurl.mjs --doctor",
     "smoke": "tmp_cache=\"$(mktemp)\"; cp fixtures/edgewallet-cache.json \"$tmp_cache\" && node peeper.mjs --limit 1 --json --cache \"$tmp_cache\" | node -e \"let s=''; process.stdin.on('data', d => s += d); process.stdin.on('end', () => { const j = JSON.parse(s); if (j.authUsed || j.xApiUsed || j.xAiUsed) throw new Error('paid/auth path used'); if (!j.tweets[0]?.id) throw new Error('missing tweet'); console.log(j.stale ? 'PASS cache' : 'PASS live', j.tweets[0].id); })\"; status=$?; rm -f \"$tmp_cache\"; exit \"$status\""
   }
