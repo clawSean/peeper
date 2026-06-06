@@ -79,3 +79,22 @@
 
 ### Next
 - DONE. Seeded Peeper state from the old liked/seen state, switched cron, and verified a no-action run.
+
+## Iteration 5 - 2026-06-06T05:22Z
+
+### Slice
+- Removed the retired `company-tweet-liker` project from the active workspace with `trash-put`.
+- Added `scripts/run-edge-scheduled.mjs` so Peeper owns the 121-second live cadence instead of relying on cron's minute-only schedule syntax.
+- Changed live cron to wake Peeper once per minute; Peeper's scheduler lock/state decides when the real Edge poll is due.
+
+### Verification
+- Command/check: `npm run edge:scheduled`
+- Result: pass
+- Evidence: Scheduler fired, ran the no-credit Edge poll, and reported latest `2062859660030361659` with no new tweets.
+
+### Learnings
+- Standard cron cannot express an every-121-seconds interval directly.
+- A tiny Peeper-owned due-time wrapper keeps cron as the wakeup mechanism while isolating timing/state in the project.
+
+### Next
+- DONE. Confirm cron logs show Peeper scheduler runs and old active project path is gone.
