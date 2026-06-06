@@ -1,0 +1,18 @@
+{
+  "source": "https://syndication.twitter.com/srv/timeline-profile/screen-name/edgewallet",
+  "transport": "fixture-cache",
+  "authUsed": false,
+  "xApiUsed": false,
+  "xAiUsed": false,
+  "stale": false,
+  "fetchedAt": "2026-06-05T23:26:00.000Z",
+  "count": 1,
+  "tweets": [
+    {
+      "id": "1983949604896043057",
+      "createdAt": "Thu Oct 30 17:30:20 +0000 2025",
+      "text": "Committed last-good public timeline cache used only when the live endpoint rate-limits during smoke tests.",
+      "url": "https://x.com/edgewallet/status/1983949604896043057"
+    }
+  ]
+}

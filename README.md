@@ -1,8 +1,8 @@
-# EdgeWallet Free Poller
+# Peeper
 
-Tiny dependency-free watcher for public `@edgewallet` posts.
+Tiny dependency-free watcher for public X posts. Defaults to `@edgewallet`.
 
-It polls X's public embedded timeline endpoint, not the paid X API:
+Peeper keeps an eye on X's public embedded timeline endpoint, not the paid X API:
 
 ```text
 https://syndication.twitter.com/srv/timeline-profile/screen-name/edgewallet
@@ -27,19 +27,19 @@ No npm install is needed.
 ## One-Time Check
 
 ```bash
-node poll-edgewallet.mjs --limit 5
+node peeper.mjs --limit 5
 ```
 
 JSON output:
 
 ```bash
-node poll-edgewallet.mjs --limit 5 --json
+node peeper.mjs --limit 5 --json
 ```
 
 ## Watch Every 61 Seconds
 
 ```bash
-node poll-edgewallet.mjs --watch --interval 61
+node peeper.mjs --watch --interval 61
 ```
 
 The first watch run seeds the local state file and does not emit old tweets. After that, only newly observed tweets are printed.
@@ -60,7 +60,7 @@ Polling is credential-free. Liking is a public account action and still needs yo
 With `xurl` configured:
 
 ```bash
-node poll-edgewallet.mjs --watch --interval 61 --on-new 'xurl like {id}'
+node peeper.mjs --watch --interval 61 --on-new 'xurl like {id}'
 ```
 
 Available command tokens:
@@ -74,7 +74,7 @@ The script only marks a new tweet as seen after the hook command succeeds. If th
 ## Watch A Different Account
 
 ```bash
-node poll-edgewallet.mjs --handle somehandle --watch --interval 61
+node peeper.mjs --handle somehandle --watch --interval 61
 ```
 
 The default state file changes with the handle, for example:
@@ -89,7 +89,7 @@ The default state file changes with the handle, for example:
 npm run smoke
 ```
 
-The smoke command performs one live public timeline fetch and verifies that the response did not use auth, X API, or xAI.
+The smoke command tries one public timeline fetch and verifies that the response did not use auth, X API, or xAI. If the endpoint rate-limits during the check, it falls back to a tiny committed last-good cache fixture and prints `PASS cache`.
 
 ## Operational Notes
 

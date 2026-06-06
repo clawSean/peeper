@@ -15,12 +15,12 @@
 - Do not perform any public Like action during proof.
 
 ## Checks
-- `node poll-edgewallet.mjs --limit 5`
+- `node peeper.mjs --limit 5`
 
 ## Current Slice
-- Build and verify an unauthenticated syndication timeline poller.
+- Build and verify Peeper as an unauthenticated syndication timeline watcher.
 
 ## Status
-- Iteration: 2/6
+- Iteration: 3/6
 - State: done
 - Blocker: none

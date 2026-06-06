@@ -33,9 +33,9 @@ function parseArgs(argv) {
     else if (arg === "--emit-existing") args.emitExisting = true;
     else if (arg === "--help" || arg === "-h") {
       console.log(`Usage:
-  node poll-edgewallet.mjs [--handle edgewallet] [--limit 10] [--json]
-  node poll-edgewallet.mjs --watch [--interval 61] [--state .edgewallet-seen.json]
-  node poll-edgewallet.mjs --watch --on-new 'xurl like {id}'
+  node peeper.mjs [--handle edgewallet] [--limit 10] [--json]
+  node peeper.mjs --watch [--interval 61] [--state .edgewallet-seen.json]
+  node peeper.mjs --watch --on-new 'xurl like {id}'
 
 Options:
   --handle <name>       X handle to poll. Default: edgewallet
@@ -277,6 +277,6 @@ function fetchWithCurl(url) {
 }
 
 main().catch((error) => {
-  console.error(`poll failed: ${error.message}`);
+  console.error(`peeper failed: ${error.message}`);
   process.exitCode = 1;
 });

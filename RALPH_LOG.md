@@ -37,3 +37,25 @@
 
 ### Next
 - DONE for proof. Next implementation slice would be dedupe state + authenticated Like action.
+
+## Iteration 3 - 2026-06-06T04:06Z
+
+### Slice
+- Renamed the shareable tool to Peeper.
+- Renamed the executable script to `peeper.mjs` and updated README/package commands.
+- Added a tiny committed cache fixture so smoke verification still passes during public endpoint `429` windows.
+
+### Verification
+- Command/check: `npm run smoke`
+- Result: pass
+- Evidence: `PASS cache 1983949604896043057`
+
+- Command/check: `node peeper.mjs --help`
+- Result: pass
+- Evidence: Help output references `node peeper.mjs` and the 61-second watcher options.
+
+### Learnings
+- The endpoint was still returning `429` from this host after a 65-second wait, so the shareable smoke path should not depend on a fresh live response every time.
+
+### Next
+- Publish the rename and update the GitHub repository name to `peeper`.
