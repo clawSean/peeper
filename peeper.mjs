@@ -1,14 +1,17 @@
 #!/usr/bin/env node
 
 import { execFileSync } from "node:child_process";
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { dirname } from "node:path";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 
 const DEFAULT_HANDLE = "edgewallet";
-const ENDPOINT_HOST = "syndication.twitter.com";
+const FXT_ENDPOINT_HOST = "api.fxtwitter.com";
+const SYNDICATION_ENDPOINT_HOST = "syndication.twitter.com";
 
 function parseArgs(argv) {
   const args = {
     handle: DEFAULT_HANDLE,
+    source: "fx",
     limit: 10,
     json: false,
     watch: false,
@@ -17,11 +20,14 @@ function parseArgs(argv) {
     state: null,
     cache: null,
     onNew: "",
+    includeReposts: false,
+    includeReplies: false,
     emitExisting: false,
   };
   for (let i = 0; i < argv.length; i += 1) {
     const arg = argv[i];
     if (arg === "--handle") args.handle = argv[++i] || DEFAULT_HANDLE;
+    else if (arg === "--source") args.source = argv[++i] || args.source;
     else if (arg === "--limit") args.limit = Number(argv[++i] || args.limit);
     else if (arg === "--interval") args.interval = Number(argv[++i] || args.interval);
     else if (arg === "--state") args.state = argv[++i] || args.state;
@@ -30,15 +36,18 @@ function parseArgs(argv) {
     else if (arg === "--json") args.json = true;
     else if (arg === "--watch") args.watch = true;
     else if (arg === "--once") args.once = true;
+    else if (arg === "--include-reposts") args.includeReposts = true;
+    else if (arg === "--include-replies") args.includeReplies = true;
     else if (arg === "--emit-existing") args.emitExisting = true;
     else if (arg === "--help" || arg === "-h") {
       console.log(`Usage:
-  node peeper.mjs [--handle edgewallet] [--limit 10] [--json]
+  node peeper.mjs [--handle edgewallet] [--source fx] [--limit 10] [--json]
   node peeper.mjs --watch [--interval 61] [--state .edgewallet-seen.json]
   node peeper.mjs --watch --on-new 'xurl like {id}'
 
 Options:
   --handle <name>       X handle to poll. Default: edgewallet
+  --source <name>       Poll source: fx or syndication. Default: fx
   --limit <n>           Tweets to show in one-shot mode. Default: 10
   --watch               Poll forever with local dedupe state
   --once                Run one watch iteration and exit, useful for smoke tests
@@ -47,12 +56,17 @@ Options:
   --cache <path>        Last-good poll cache. Default: .<handle>-cache.json
   --on-new <command>    Optional command template for new tweets.
                         Tokens: {id}, {url}, {handle}
+  --include-reposts     Include reposts/retweets when the source exposes them
+  --include-replies     Include replies when the source exposes them
   --emit-existing       Treat existing timeline tweets as new on first run`);
       process.exit(0);
     }
   }
   if (!Number.isFinite(args.limit) || args.limit < 1) args.limit = 10;
   if (!Number.isFinite(args.interval) || args.interval < 61) args.interval = 61;
+  if (!["fx", "syndication"].includes(args.source)) {
+    throw new Error("--source must be fx or syndication");
+  }
   args.handle = args.handle.replace(/^@/, "").trim();
   args.state ||= `.${args.handle.toLowerCase()}-seen.json`;
   args.cache ||= `.${args.handle.toLowerCase()}-cache.json`;
@@ -69,7 +83,7 @@ function extractNextData(html) {
   return JSON.parse(match[1]);
 }
 
-function normalizeTweet(entry, handle) {
+function normalizeSyndicationTweet(entry, handle) {
   const tweet = entry?.content?.tweet;
   if (!tweet) return null;
 
@@ -84,6 +98,22 @@ function normalizeTweet(entry, handle) {
   };
 }
 
+function normalizeFxTweet(entry, handle) {
+  if (entry?.type !== "status") return null;
+  const id = String(entry.id || "");
+  if (!id) return null;
+
+  return {
+    id,
+    createdAt: entry.created_at,
+    text: String(entry.raw_text?.text || entry.text || "").replace(/\s+/g, " ").trim(),
+    url: `https://x.com/${handle}/status/${id}`,
+    sourceUrl: entry.url || `https://x.com/${handle}/status/${id}`,
+    author: entry.author?.screen_name || "",
+    isReply: Boolean(entry.replying_to),
+  };
+}
+
 function htmlDecode(value) {
   return value
     .replace(/&amp;/g, "&")
@@ -93,8 +123,66 @@ function htmlDecode(value) {
     .replace(/&#39;/g, "'");
 }
 
-function poll(handle, cachePath) {
-  const url = `https://${ENDPOINT_HOST}/srv/timeline-profile/screen-name/${encodeURIComponent(handle)}`;
+function poll(args) {
+  if (args.source === "syndication") return pollSyndication(args.handle, args.cache);
+  return pollFx(args.handle, args.cache, {
+    includeReplies: args.includeReplies,
+    includeReposts: args.includeReposts,
+  });
+}
+
+function pollFx(handle, cachePath, { includeReplies, includeReposts }) {
+  const url = `https://${FXT_ENDPOINT_HOST}/2/profile/${encodeURIComponent(handle)}/statuses?count=20`;
+  let body;
+  try {
+    body = fetchWithCurl(url);
+  } catch (error) {
+    const cached = loadCache(cachePath);
+    if (!cached) throw error;
+    return {
+      ...cached,
+      stale: true,
+      staleReason: error.message,
+    };
+  }
+
+  let data;
+  try {
+    data = JSON.parse(body);
+  } catch (error) {
+    const cached = loadCache(cachePath);
+    if (!cached) throw new Error(`FxTwitter response parse failed: ${error.message}`);
+    return {
+      ...cached,
+      stale: true,
+      staleReason: `FxTwitter response parse failed: ${error.message}`,
+    };
+  }
+  const tweets = (data.results || [])
+    .map((entry) => normalizeFxTweet(entry, handle))
+    .filter(Boolean)
+    .filter((tweet) => includeReposts || tweet.author.toLowerCase() === handle.toLowerCase())
+    .filter((tweet) => includeReplies || !tweet.isReply)
+    .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+
+  const result = {
+    source: url,
+    sourceKind: "fx",
+    transport: "curl",
+    authUsed: false,
+    xApiUsed: false,
+    xAiUsed: false,
+    stale: false,
+    fetchedAt: new Date().toISOString(),
+    count: tweets.length,
+    tweets,
+  };
+  saveCache(cachePath, result);
+  return result;
+}
+
+function pollSyndication(handle, cachePath) {
+  const url = `https://${SYNDICATION_ENDPOINT_HOST}/srv/timeline-profile/screen-name/${encodeURIComponent(handle)}`;
   let html;
   try {
     html = fetchWithCurl(url);
@@ -108,16 +196,28 @@ function poll(handle, cachePath) {
     };
   }
 
-  const data = extractNextData(html);
+  let data;
+  try {
+    data = extractNextData(html);
+  } catch (error) {
+    const cached = loadCache(cachePath);
+    if (!cached) throw error;
+    return {
+      ...cached,
+      stale: true,
+      staleReason: error.message,
+    };
+  }
   const entries = data?.props?.pageProps?.timeline?.entries || [];
   const tweets = entries
     .filter((entry) => entry?.type === "tweet")
-    .map((entry) => normalizeTweet(entry, handle))
+    .map((entry) => normalizeSyndicationTweet(entry, handle))
     .filter(Boolean)
     .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
 
   const result = {
     source: url,
+    sourceKind: "syndication",
     transport: "curl",
     authUsed: false,
     xApiUsed: false,
@@ -139,7 +239,7 @@ async function main() {
     return;
   }
 
-  const result = poll(args.handle, args.cache);
+  const result = poll(args);
   const shownTweets = result.tweets.slice(0, args.limit);
   const output = { ...result, tweets: shownTweets };
 
@@ -164,7 +264,7 @@ async function watch(args) {
   do {
     const startedAt = new Date();
     try {
-      const result = poll(args.handle, args.cache);
+      const result = poll(args);
       const state = loadState(args.state);
       const seen = new Set(state.seen || []);
       const firstRun = seen.size === 0;
@@ -202,6 +302,7 @@ async function watch(args) {
 
 function printHeader(result) {
   console.log(`source=${result.source}`);
+  console.log(`sourceKind=${result.sourceKind}`);
   console.log(`transport=${result.transport}`);
   console.log(`authUsed=${result.authUsed} xApiUsed=${result.xApiUsed} xAiUsed=${result.xAiUsed}`);
   if (result.stale) console.log(`stale=true reason=${result.staleReason}`);
@@ -220,6 +321,7 @@ function saveState(path, seen, checkedAt) {
     checkedAt: checkedAt.toISOString(),
     seen: [...seen].slice(-1000),
   };
+  mkdirSync(dirname(path), { recursive: true });
   writeFileSync(path, `${JSON.stringify(state, null, 2)}\n`);
 }
 
@@ -232,6 +334,7 @@ function loadCache(path) {
 
 function saveCache(path, result) {
   if (!path) return;
+  mkdirSync(dirname(path), { recursive: true });
   writeFileSync(path, `${JSON.stringify(result, null, 2)}\n`);
 }
 
@@ -271,7 +374,7 @@ function fetchWithCurl(url) {
   const body = response.slice(0, markerIndex);
   const status = Number(response.slice(markerIndex + marker.length).trim());
   if (status < 200 || status >= 300) {
-    throw new Error(`syndication endpoint returned HTTP ${status}`);
+    throw new Error(`public endpoint returned HTTP ${status}`);
   }
   return body;
 }

@@ -1,5 +1,9 @@
 .edgewallet-seen.json
 .*-seen.json
 .*-cache.json
+.env
+state/
+logs/
+PROJECT_PROGRESS.md
 *.log
 node_modules/

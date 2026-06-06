@@ -59,3 +59,23 @@
 
 ### Next
 - Publish the rename and update the GitHub repository name to `peeper`.
+
+## Iteration 4 - 2026-06-06T04:35Z
+
+### Slice
+- Found the old live `company-tweet-liker` cron path still using X API search through `xurl`, which was failing with `CreditsDepleted`.
+- Verified the original syndication source is no-credit but stale for `@EdgeWallet`, returning older 2025 posts and missing the June 2026 IDs.
+- Added FxTwitter profile statuses as Peeper's default no-credit source because it returned current June 2026 Edge posts, including `2062859660030361659`.
+- Added local Edge auto-like scripts so Peeper owns the watch/like logic and cron only schedules `npm run edge:once`.
+
+### Verification
+- Command/check: `node peeper.mjs --source fx --handle EdgeWallet --limit 20 --json`
+- Result: pass
+- Evidence: Returned current no-credit results from `api.fxtwitter.com`, with `authUsed=false`, `xApiUsed=false`, and `xAiUsed=false`.
+
+### Learnings
+- `https://syndication.twitter.com/srv/timeline-profile/screen-name/edgewallet` is not sufficient for live Edge auto-like because it currently lags behind the account's real timeline.
+- FxTwitter's `/2/profile/{handle}/statuses` endpoint includes reposted accounts, so Peeper filters to `author.screen_name === handle` unless `--include-reposts` is passed.
+
+### Next
+- DONE. Seeded Peeper state from the old liked/seen state, switched cron, and verified a no-action run.

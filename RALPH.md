@@ -18,9 +18,9 @@
 - `node peeper.mjs --limit 5`
 
 ## Current Slice
-- Build and verify Peeper as an unauthenticated syndication timeline watcher.
+- Build and verify Peeper as an unauthenticated current-profile watcher.
 
 ## Status
-- Iteration: 3/6
+- Iteration: 4/6
 - State: done
 - Blocker: none
