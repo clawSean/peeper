@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 import { spawnSync } from "node:child_process";
-import { existsSync, mkdirSync, readFileSync, appendFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, appendFileSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
 
 const LIVE_ACK = "I_UNDERSTAND_THIS_LIKES_FROM_MY_X_ACCOUNT";
@@ -31,6 +31,7 @@ function config() {
     likerUserId: process.env.PEEPER_LIKER_USER_ID || "",
     expectedLikerUsername: process.env.PEEPER_EXPECTED_LIKER_USERNAME || "",
     eventsPath: env("PEEPER_EVENTS_PATH", "state/peeper-like-events.jsonl"),
+    pendingPath: env("PEEPER_PENDING_PATH", "state/peeper-pending-likes.json"),
   };
 }
 
@@ -82,8 +83,8 @@ function likeTweet(cfg, tweetId) {
   if (cfg.mode === "dry-run") {
     const event = { at: new Date().toISOString(), type: "would_like", tweetId };
     recordEvent(cfg.eventsPath, event);
-    console.log(JSON.stringify({ ok: true, dryRun: true, tweetId }, null, 2));
-    return;
+    removePending(cfg.pendingPath, tweetId);
+    return { ok: true, dryRun: true, tweetId };
   }
 
   if (cfg.liveAck !== LIVE_ACK) {
@@ -112,22 +113,205 @@ function likeTweet(cfg, tweetId) {
     stdio: ["ignore", "pipe", "pipe"],
   });
   if (result.status !== 0) {
-    throw new Error("xurl like failed: " + (result.stderr || result.stdout));
+    const failure = classifyXurlFailure(result.stderr || result.stdout);
+    const event = {
+      at: new Date().toISOString(),
+      type: failure.pending ? "pending" : "failed",
+      tweetId,
+      status: result.status,
+      title: failure.title,
+      detail: failure.detail,
+      resetDate: failure.resetDate,
+      nextAttemptAt: failure.nextAttemptAt,
+      raw: failure.raw,
+    };
+    recordEvent(cfg.eventsPath, event);
+
+    if (failure.pending) {
+      upsertPending(cfg.pendingPath, {
+        tweetId,
+        title: failure.title,
+        detail: failure.detail,
+        resetDate: failure.resetDate,
+        nextAttemptAt: failure.nextAttemptAt,
+      });
+      return {
+        ok: false,
+        pending: true,
+        tweetId,
+        title: failure.title,
+        resetDate: failure.resetDate,
+        nextAttemptAt: failure.nextAttemptAt,
+        detail: failure.detail,
+      };
+    }
+
+    throw new Error("xurl like failed: " + failure.raw);
   }
 
   const parsed = parseJson(result.stdout);
+  removePending(cfg.pendingPath, tweetId);
   recordEvent(cfg.eventsPath, {
     at: new Date().toISOString(),
     type: "liked",
     tweetId,
     result: parsed,
   });
-  console.log(JSON.stringify({ ok: true, dryRun: false, tweetId, result: parsed }, null, 2));
+  return { ok: true, dryRun: false, tweetId, result: parsed };
+}
+
+function classifyXurlFailure(rawValue) {
+  const raw = String(rawValue || "").trim();
+  const parsed = parseFirstJsonObject(raw);
+  const title = parsed?.title || "";
+  const detail = parsed?.detail || raw;
+  const type = parsed?.type || "";
+  const resetDate = parsed?.reset_date || null;
+  const spendCapReached = title === "SpendCapReached"
+    || type.includes("/credits")
+    || /spend cap/i.test(detail);
+
+  if (!spendCapReached) {
+    return {
+      pending: false,
+      title: title || "XurlFailure",
+      detail,
+      resetDate,
+      nextAttemptAt: null,
+      raw,
+    };
+  }
+
+  return {
+    pending: true,
+    title: title || "SpendCapReached",
+    detail,
+    resetDate,
+    nextAttemptAt: resetDate ? `${resetDate}T00:05:00.000Z` : retryAfterHours(6),
+    raw,
+  };
+}
+
+function retryPending(cfg) {
+  const state = loadPending(cfg.pendingPath);
+  const now = new Date();
+  const due = state.pending.filter((item) => {
+    if (!item.nextAttemptAt) return true;
+    return new Date(item.nextAttemptAt).getTime() <= now.getTime();
+  });
+
+  const results = [];
+  for (const item of due) {
+    try {
+      results.push(likeTweet(cfg, item.tweetId));
+    } catch (error) {
+      results.push({ ok: false, pending: true, tweetId: item.tweetId, error: error.message });
+      upsertPending(cfg.pendingPath, {
+        tweetId: item.tweetId,
+        title: "RetryFailed",
+        detail: error.message,
+        resetDate: null,
+        nextAttemptAt: retryAfterHours(1),
+      });
+    }
+  }
+
+  const remaining = loadPending(cfg.pendingPath).pending;
+  return {
+    ok: true,
+    checkedAt: now.toISOString(),
+    attempted: due.length,
+    pending: remaining.length,
+    nextAttemptAt: remaining
+      .map((item) => item.nextAttemptAt)
+      .filter(Boolean)
+      .sort()[0] || null,
+    results,
+  };
 }
 
 function recordEvent(path, event) {
   mkdirSync(dirname(path), { recursive: true });
   appendFileSync(path, `${JSON.stringify(event)}\n`);
+}
+
+function loadPending(path) {
+  if (!existsSync(path)) return { pending: [] };
+  const raw = readFileSync(path, "utf8").trim();
+  if (!raw) return { pending: [] };
+  const parsed = JSON.parse(raw);
+  if (Array.isArray(parsed)) return { pending: parsed };
+  return { pending: parsed.pending || [] };
+}
+
+function savePending(path, pending) {
+  mkdirSync(dirname(path), { recursive: true });
+  writeFileSync(path, `${JSON.stringify({
+    updatedAt: new Date().toISOString(),
+    pending,
+  }, null, 2)}\n`);
+}
+
+function upsertPending(path, item) {
+  const state = loadPending(path);
+  const now = new Date().toISOString();
+  const existing = state.pending.find((entry) => entry.tweetId === item.tweetId);
+  if (existing) {
+    existing.lastAttemptAt = now;
+    existing.attempts = Number(existing.attempts || 0) + 1;
+    existing.title = item.title;
+    existing.detail = item.detail;
+    existing.resetDate = item.resetDate;
+    existing.nextAttemptAt = item.nextAttemptAt;
+  } else {
+    state.pending.push({
+      tweetId: item.tweetId,
+      firstSeenAt: now,
+      lastAttemptAt: now,
+      attempts: 1,
+      title: item.title,
+      detail: item.detail,
+      resetDate: item.resetDate,
+      nextAttemptAt: item.nextAttemptAt,
+    });
+  }
+  savePending(path, state.pending);
+}
+
+function removePending(path, tweetId) {
+  if (!existsSync(path)) return;
+  const state = loadPending(path);
+  const next = state.pending.filter((item) => item.tweetId !== tweetId);
+  if (next.length !== state.pending.length) savePending(path, next);
+}
+
+function parseFirstJsonObject(value) {
+  const start = value.indexOf("{");
+  if (start === -1) return null;
+
+  let depth = 0;
+  let inString = false;
+  let escaped = false;
+  for (let i = start; i < value.length; i += 1) {
+    const char = value[i];
+    if (inString) {
+      if (escaped) escaped = false;
+      else if (char === "\\") escaped = true;
+      else if (char === "\"") inString = false;
+      continue;
+    }
+    if (char === "\"") inString = true;
+    else if (char === "{") depth += 1;
+    else if (char === "}") {
+      depth -= 1;
+      if (depth === 0) return parseJson(value.slice(start, i + 1));
+    }
+  }
+  return null;
+}
+
+function retryAfterHours(hours) {
+  return new Date(Date.now() + hours * 60 * 60 * 1000).toISOString();
 }
 
 function parseJson(value) {
@@ -141,11 +325,13 @@ function parseJson(value) {
 const cfg = config();
 if (process.argv.includes("--doctor")) {
   doctor(cfg);
+} else if (process.argv.includes("--retry-pending")) {
+  console.log(JSON.stringify(retryPending(cfg), null, 2));
 } else {
   const tweetId = process.argv.find((arg) => /^\d+$/.test(arg));
   if (!tweetId) {
-    console.error("Usage: node scripts/like-with-xurl.mjs --doctor | <tweet-id>");
+    console.error("Usage: node scripts/like-with-xurl.mjs --doctor | --retry-pending | <tweet-id>");
     process.exit(2);
   }
-  likeTweet(cfg, tweetId);
+  console.log(JSON.stringify(likeTweet(cfg, tweetId), null, 2));
 }

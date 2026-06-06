@@ -99,9 +99,11 @@ That command:
 - filters to posts authored by `EdgeWallet` by default, not reposted accounts or replies
 - stores seen IDs in `state/edgewallet-seen.json`
 - stores the last-good response in `state/edgewallet-cache.json`
+- retries any due pending Like writes in `state/peeper-pending-likes.json`
 - calls `scripts/like-with-xurl.mjs` only for genuinely new tweet IDs
 
 `scripts/like-with-xurl.mjs` uses `xurl` only for the authenticated Like write. It does not read the timeline.
+If X returns a write-side `SpendCapReached` error, the tweet is recorded as pending and retried after the reset date instead of crashing every cron tick.
 
 Run the local like config doctor:
 

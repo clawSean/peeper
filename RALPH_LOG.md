@@ -117,3 +117,23 @@
 
 ### Next
 - DONE. Keep cron simple unless a real rate-limit/ops need appears.
+
+## Iteration 7 - 2026-06-06T16:44Z
+
+### Slice
+- Investigated why a new Edge tweet `2063297533732962729` was detected but not liked.
+- Root cause: the no-credit watcher worked, but the authenticated X Like write returned `SpendCapReached`; X reported the developer account is blocked until `2026-06-09`.
+- Updated `scripts/like-with-xurl.mjs` so write-side spend-cap failures are recorded as pending Likes instead of crashing each cron tick.
+- Added pending retry handling through `state/peeper-pending-likes.json`; `npm run edge:once` checks due pending Likes before polling for new posts.
+
+### Verification
+- Command/check: live cron tick at `2026-06-06T16:44Z`
+- Result: pass
+- Evidence: The tweet was recorded as pending with next retry `2026-06-09T00:05:00.000Z`; the next live cron tick at `16:46Z` attempted `0` blocked write retries, kept `pending=1`, and reported `no new tweets; latest=2063297533732962729`.
+
+### Learnings
+- No-credit reads can keep working while X write actions are still blocked by developer spend caps.
+- The system should expose write-cap failure as a first-class pending state; otherwise the cron log looks like a poller failure even though discovery is healthy.
+
+### Next
+- Wait for the X spend-cap reset or raise/switch the write credentials. The pending Like should retry after `2026-06-09T00:05:00.000Z`.
