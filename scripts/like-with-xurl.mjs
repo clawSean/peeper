@@ -187,7 +187,7 @@ function classifyXurlFailure(rawValue) {
     title: title || "SpendCapReached",
     detail,
     resetDate,
-    nextAttemptAt: resetDate ? `${resetDate}T00:05:00.000Z` : retryAfterHours(6),
+    nextAttemptAt: spendCapRetryAt(resetDate),
     raw,
   };
 }
@@ -312,6 +312,14 @@ function parseFirstJsonObject(value) {
 
 function retryAfterHours(hours) {
   return new Date(Date.now() + hours * 60 * 60 * 1000).toISOString();
+}
+
+function spendCapRetryAt(resetDate) {
+  if (!resetDate) return retryAfterHours(6);
+  const resetAt = new Date(`${resetDate}T00:05:00.000Z`);
+  if (Number.isNaN(resetAt.getTime())) return retryAfterHours(6);
+  if (resetAt.getTime() > Date.now() + 60 * 1000) return resetAt.toISOString();
+  return retryAfterHours(1);
 }
 
 function parseJson(value) {
