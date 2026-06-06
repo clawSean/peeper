@@ -85,7 +85,7 @@
 ### Slice
 - Removed the retired `company-tweet-liker` project from the active workspace with `trash-put`.
 - Added `scripts/run-edge-scheduled.mjs` so Peeper owns the 121-second live cadence instead of relying on cron's minute-only schedule syntax.
-- Changed live cron to wake Peeper once per minute; Peeper's scheduler lock/state decides when the real Edge poll is due.
+- Changed live cron to wake Peeper's scheduler once per minute; Peeper's scheduler lock/state decides when the real Edge poll is due.
 
 ### Verification
 - Command/check: `npm run edge:scheduled`
@@ -94,7 +94,7 @@
 
 ### Learnings
 - Standard cron cannot express an every-121-seconds interval directly.
-- A tiny Peeper-owned due-time wrapper keeps cron as the wakeup mechanism while isolating timing/state in the project.
+- A tiny Peeper-owned due-time wrapper keeps cron as the wakeup mechanism while isolating timing/state in the project. Calling the Node script directly from cron avoids npm headers on quiet/not-due wakeups.
 
 ### Next
 - DONE. Confirm cron logs show Peeper scheduler runs and old active project path is gone.

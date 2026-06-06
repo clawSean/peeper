@@ -120,7 +120,7 @@ Standard cron has minute-level granularity, so the scheduler lives inside Peeper
 Example cron:
 
 ```cron
-* * * * * cd /path/to/peeper && /usr/bin/npm run edge:scheduled >> /path/to/peeper/logs/edgewallet-auto-like.log 2>&1
+* * * * * cd /path/to/peeper && /usr/bin/node scripts/run-edge-scheduled.mjs >> /path/to/peeper/logs/edgewallet-auto-like.log 2>&1
 ```
 
 Live mode requires `.env` to contain:
