@@ -129,10 +129,30 @@ Live mode requires `.env` to contain:
 PEEPER_MODE=live
 PEEPER_LIVE_ACK=I_UNDERSTAND_THIS_LIKES_FROM_MY_X_ACCOUNT
 PEEPER_XURL_WRITE_APP=your-oauth2-app
+PEEPER_XURL_WRITE_AUTH=oauth2
 PEEPER_LIKER_USER_ID=123456789
 ```
 
 Tokens are not stored in this repo; they stay inside `xurl`.
+
+### macOS LaunchAgent
+
+The included LaunchAgent keeps one supervised watcher loop alive. The wrapper
+runs `edge:once`, sleeps for 120 seconds, and repeats. This avoids macOS timer
+coalescing while retaining a single-process overlap lock.
+
+```bash
+plutil -lint launchd/com.clawsean.peeper-edge-auto-like.plist
+install -m 644 launchd/com.clawsean.peeper-edge-auto-like.plist \
+  "$HOME/Library/LaunchAgents/com.clawsean.peeper-edge-auto-like.plist"
+launchctl bootstrap "gui/$(id -u)" \
+  "$HOME/Library/LaunchAgents/com.clawsean.peeper-edge-auto-like.plist"
+launchctl kickstart "gui/$(id -u)/com.clawsean.peeper-edge-auto-like"
+```
+
+Verify it stays running and inspect the project-local `logs/launchd.*.log`
+files. Updating the installed plist requires a `bootout`, reinstall, and fresh
+`bootstrap`; it does not require an OpenClaw or Gateway restart.
 
 ## Watch A Different Account
 

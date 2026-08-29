@@ -45,7 +45,9 @@ function doctor(cfg) {
   checks.push({
     name: "xurl binary",
     ok: version.status === 0,
-    detail: version.status === 0 ? version.stdout.trim() : version.stderr.trim(),
+    detail: version.status === 0
+      ? (version.stdout || "").trim()
+      : (version.stderr || version.error?.message || "xurl unavailable").trim(),
   });
   checks.push({
     name: "mode",
@@ -59,9 +61,25 @@ function doctor(cfg) {
   });
   checks.push({
     name: "OAuth2 write target",
-    ok: Boolean(cfg.xurlWriteApp && cfg.xurlWriteAuth && cfg.likerUserId),
+    ok: Boolean(cfg.xurlWriteApp && cfg.xurlWriteAuth === "oauth2" && cfg.likerUserId),
     detail: `app=${cfg.xurlWriteApp || "(missing)"} auth=${cfg.xurlWriteAuth} userId=${cfg.likerUserId || "(missing)"}`,
   });
+
+  if (version.status === 0 && cfg.mode === "live" && cfg.xurlWriteApp) {
+    const authStatus = spawnSync(cfg.xurlBin, ["auth", "status"], { encoding: "utf8" });
+    const oauth2User = authStatus.status === 0
+      ? oauth2UserForApp(authStatus.stdout || "", cfg.xurlWriteApp)
+      : null;
+    checks.push({
+      name: "OAuth2 user",
+      ok: authStatus.status === 0
+        && Boolean(oauth2User)
+        && (!cfg.expectedLikerUsername || oauth2User === cfg.expectedLikerUsername),
+      detail: authStatus.status !== 0
+        ? (authStatus.stderr || authStatus.error?.message || "xurl auth status failed").trim()
+        : `app=${cfg.xurlWriteApp} user=${oauth2User || "(missing)"}`,
+    });
+  }
 
   const ok = checks.every((check) => check.ok);
   console.log(JSON.stringify({
@@ -72,6 +90,23 @@ function doctor(cfg) {
     checks,
   }, null, 2));
   process.exitCode = ok ? 0 : 1;
+}
+
+function oauth2UserForApp(rawStatus, appName) {
+  const cleanStatus = rawStatus.replace(/\x1b\[[0-9;]*m/g, "");
+  let currentApp = null;
+  for (const line of cleanStatus.split(/\r?\n/)) {
+    const heading = line.match(/^\s*(?:▸\s*)?([A-Za-z0-9._-]+)\s+\[/);
+    if (heading) {
+      currentApp = heading[1];
+      continue;
+    }
+    const oauth2 = line.match(/oauth2:\s*([A-Za-z0-9._-]+)/);
+    if (currentApp === appName && oauth2 && oauth2[1] !== "none") {
+      return oauth2[1];
+    }
+  }
+  return null;
 }
 
 function likeTweet(cfg, tweetId) {
@@ -145,6 +180,14 @@ function likeTweet(cfg, tweetId) {
         detail: failure.detail,
       };
     }
+
+    upsertPending(cfg.pendingPath, {
+      tweetId,
+      title: failure.title,
+      detail: failure.detail,
+      resetDate: failure.resetDate,
+      nextAttemptAt: retryAfterHours(1),
+    });
 
     throw new Error("xurl like failed: " + failure.raw);
   }
